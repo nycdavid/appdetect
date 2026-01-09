@@ -32,13 +32,17 @@ struct appdetect {
                 continue
             }
 
-            let response = "Hello from appdetect\n"
+            let response = getFocusedApp()
             response.withCString { cstr in
                 _ = write(clientFD, cstr, strlen(cstr))
             }
 
             close(clientFD)
         }
+    }
+    
+    static func getFocusedApp() -> String {
+        return "Hello from appdetect\n"
     }
     
     static func setupSocket(serverFD: Int32) {
