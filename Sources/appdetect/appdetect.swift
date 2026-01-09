@@ -13,11 +13,6 @@ struct appdetect {
         //  - app information + metadata (as JSON) is returned via socket
         //
         
-        let socketPath = "/tmp/appdetect.sock"
-
-        // Remove any existing socket
-        unlink(socketPath)
-
         // Create UNIX socket
         let serverFD = socket(AF_UNIX, SOCK_STREAM, 0)
         guard serverFD >= 0 else {
@@ -25,6 +20,32 @@ struct appdetect {
             exit(1)
         }
         defer { close(serverFD) }
+        
+        // Set up socket for listening
+        setupSocket(serverFD: serverFD)
+
+        // Accept loop
+        while true {
+            let clientFD = accept(serverFD, nil, nil)
+            if clientFD < 0 {
+                perror("accept")
+                continue
+            }
+
+            let response = "Hello from appdetect\n"
+            response.withCString { cstr in
+                _ = write(clientFD, cstr, strlen(cstr))
+            }
+
+            close(clientFD)
+        }
+    }
+    
+    static func setupSocket(serverFD: Int32) {
+        let socketPath = "/tmp/appdetect.sock"
+
+        // Remove any existing socket
+        unlink(socketPath)
 
         // sockaddr_un
         var addr = sockaddr_un()
@@ -57,21 +78,5 @@ struct appdetect {
         }
 
         print("Listening on \(socketPath)")
-
-        // Accept loop
-        while true {
-            let clientFD = accept(serverFD, nil, nil)
-            if clientFD < 0 {
-                perror("accept")
-                continue
-            }
-
-            let response = "Hello from appdetect\n"
-            response.withCString { cstr in
-                _ = write(clientFD, cstr, strlen(cstr))
-            }
-
-            close(clientFD)
-        }
     }
 }
