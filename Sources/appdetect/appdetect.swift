@@ -12,7 +12,7 @@ struct appdetect {
         //  - request comes in -> focused app is queried
         //  - app information + metadata (as JSON) is returned via socket
         //
-        
+
         // Create UNIX socket
         let serverFD = socket(AF_UNIX, SOCK_STREAM, 0)
         guard serverFD >= 0 else {
@@ -24,25 +24,43 @@ struct appdetect {
         // Set up socket for listening
         setupSocket(serverFD: serverFD)
 
-        // Accept loop
-        while true {
-            let clientFD = accept(serverFD, nil, nil)
-            if clientFD < 0 {
-                perror("accept")
-                continue
-            }
+        var currentAppName = "unknown"
 
-            let response = getFocusedApp()
-            response.withCString { cstr in
-                _ = write(clientFD, cstr, strlen(cstr))
-            }
-
-            close(clientFD)
+        let _ = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            currentAppName = app?.localizedName ?? "unknown"
+            currentAppName = currentAppName + "\n"
         }
+
+        DispatchQueue.global().async {
+            // Accept loop
+            while true {
+                let clientFD = accept(serverFD, nil, nil)
+                if clientFD < 0 {
+                    perror("accept")
+                    continue
+                }
+
+                currentAppName.withCString { cstr in
+                    _ = write(clientFD, cstr, strlen(cstr))
+                }
+
+                close(clientFD)
+            }
+        }
+
+        RunLoop.main.run()
     }
     
     static func getFocusedApp() -> String {
-        return "Hello from appdetect\n"
+        let app = NSWorkspace.shared.frontmostApplication
+        let name = app?.localizedName ?? "Unknown"
+
+        return name + "\n"
     }
     
     static func setupSocket(serverFD: Int32) {
