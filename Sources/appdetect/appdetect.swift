@@ -4,6 +4,12 @@
 import Foundation
 import AppKit
 
+
+struct AXWindowInfo {
+    let title: String?
+    let document: String?
+}
+
 @main
 struct appdetect {
     static func main() {
@@ -14,6 +20,8 @@ struct appdetect {
         //
 
         // Create UNIX socket
+        print("exe:", CommandLine.arguments[0])
+        print("trusted:", AXIsProcessTrusted())
         let serverFD = socket(AF_UNIX, SOCK_STREAM, 0)
         guard serverFD >= 0 else {
             perror("socket")
@@ -25,6 +33,7 @@ struct appdetect {
         setupSocket(serverFD: serverFD)
 
         var currentAppName = "unknown"
+        var axwi: AXWindowInfo?
 
         let _ = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
@@ -32,8 +41,45 @@ struct appdetect {
             queue: .main
         ) { note in
             let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            let appPID = app?.processIdentifier
+
+            if let pid = appPID {
+                let appAX = AXUIElementCreateApplication(pid)
+
+                var focusedWindowValue: CFTypeRef?
+                let err = AXUIElementCopyAttributeValue(appAX,
+                                                       kAXFocusedWindowAttribute as CFString,
+                                                       &focusedWindowValue)
+
+                guard err == .success,
+                      let win = focusedWindowValue,
+                      CFGetTypeID(win) == AXUIElementGetTypeID()
+                else {
+                    print(err.rawValue)
+                    return
+                }
+
+                let winAX = win as! AXUIElement
+                func copyString(_ attr: CFString) -> String? {
+                    var value: CFTypeRef?
+                    let e = AXUIElementCopyAttributeValue(winAX, attr, &value)
+                    guard e == .success,
+                          let v = value,
+                          CFGetTypeID(v) == CFStringGetTypeID()
+                    else { return nil }
+                    return v as? String
+                }
+
+
+                // Many apps put the “file/document” portion here.
+                let title = copyString(kAXTitleAttribute as CFString)
+                let document = copyString(kAXDocumentAttribute as CFString)
+
+                axwi = AXWindowInfo(title: title, document: document)
+            }
+
             currentAppName = app?.localizedName ?? "unknown"
-            currentAppName = currentAppName + "\n"
+            currentAppName = currentAppName
         }
 
         DispatchQueue.global().async {
@@ -45,7 +91,14 @@ struct appdetect {
                     continue
                 }
 
-                currentAppName.withCString { cstr in
+                var fullInfo = ""
+                if let ft = axwi?.title {
+                    fullInfo = currentAppName + " - " + ft
+                } else {
+                    fullInfo = currentAppName
+                }
+
+                (fullInfo + "\n").withCString { cstr in
                     _ = write(clientFD, cstr, strlen(cstr))
                 }
 
