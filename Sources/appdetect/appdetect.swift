@@ -95,7 +95,7 @@ struct appdetect {
                 if let ft = axwi?.title {
                     fullInfo = #"{"application": "\#(currentAppName)", "metadata": "\#(ft)"}"#
                 } else {
-                    fullInfo = #"{"application": "\#(currentAppName)}"#
+                    fullInfo = #"{"application": "\#(currentAppName)"}"#
                 }
 
                 (fullInfo + "\n").withCString { cstr in
