@@ -33,7 +33,7 @@ struct appdetect {
         setupSocket(serverFD: serverFD)
 
         var currentAppName = "unknown"
-        var axwi: AXWindowInfo?
+        var cpid: pid_t = 0
 
         let _ = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
@@ -41,41 +41,9 @@ struct appdetect {
             queue: .main
         ) { note in
             let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            let appPID = app?.processIdentifier
 
-            if let pid = appPID {
-                let appAX = AXUIElementCreateApplication(pid)
-
-                var focusedWindowValue: CFTypeRef?
-                let err = AXUIElementCopyAttributeValue(appAX,
-                                                       kAXFocusedWindowAttribute as CFString,
-                                                       &focusedWindowValue)
-
-                guard err == .success,
-                      let win = focusedWindowValue,
-                      CFGetTypeID(win) == AXUIElementGetTypeID()
-                else {
-                    print(err.rawValue)
-                    return
-                }
-
-                let winAX = win as! AXUIElement
-                func copyString(_ attr: CFString) -> String? {
-                    var value: CFTypeRef?
-                    let e = AXUIElementCopyAttributeValue(winAX, attr, &value)
-                    guard e == .success,
-                          let v = value,
-                          CFGetTypeID(v) == CFStringGetTypeID()
-                    else { return nil }
-                    return v as? String
-                }
-
-
-                // Many apps put the “file/document” portion here.
-                let title = copyString(kAXTitleAttribute as CFString)
-                let document = copyString(kAXDocumentAttribute as CFString)
-
-                axwi = AXWindowInfo(title: title, document: document)
+            if let appPid = app?.processIdentifier {
+                cpid = appPid
             }
 
             currentAppName = app?.localizedName ?? "unknown"
@@ -90,6 +58,7 @@ struct appdetect {
                     perror("accept")
                     continue
                 }
+                let axwi = getMetadata(appPid: cpid)
 
                 var fullInfo = ""
                 if let ft = axwi?.title {
@@ -108,7 +77,40 @@ struct appdetect {
 
         RunLoop.main.run()
     }
-    
+
+    static func getMetadata(appPid: pid_t) -> AXWindowInfo? {
+        let appAX = AXUIElementCreateApplication(appPid)
+
+        var focusedWindowValue: CFTypeRef?
+        let err = AXUIElementCopyAttributeValue(appAX, kAXFocusedWindowAttribute as CFString, &focusedWindowValue)
+
+        guard err == .success,
+              let win = focusedWindowValue,
+              CFGetTypeID(win) == AXUIElementGetTypeID()
+        else {
+            print(err.rawValue)
+            return nil
+        }
+
+        let winAX = win as! AXUIElement
+        func copyString(_ attr: CFString) -> String? {
+            var value: CFTypeRef?
+            let e = AXUIElementCopyAttributeValue(winAX, attr, &value)
+            guard e == .success,
+                  let v = value,
+                  CFGetTypeID(v) == CFStringGetTypeID()
+            else { return nil }
+            return v as? String
+        }
+
+
+        // Many apps put the “file/document” portion here.
+        let title = copyString(kAXTitleAttribute as CFString)
+        let document = copyString(kAXDocumentAttribute as CFString)
+
+        return AXWindowInfo(title: title, document: document)
+    }
+
     static func getFocusedApp() -> String {
         let app = NSWorkspace.shared.frontmostApplication
         let name = app?.localizedName ?? "Unknown"
