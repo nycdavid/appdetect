@@ -35,6 +35,15 @@ struct appdetect {
         var currentAppName = "unknown"
         var cpid: pid_t = 0
 
+        let frontmostApp = NSWorkspace.shared.frontmostApplication
+
+        if let currentPID = frontmostApp?.processIdentifier {
+            cpid = currentPID
+        }
+        if let locName = frontmostApp?.localizedName {
+            currentAppName = locName
+        }
+
         let _ = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
@@ -88,7 +97,6 @@ struct appdetect {
               let win = focusedWindowValue,
               CFGetTypeID(win) == AXUIElementGetTypeID()
         else {
-            print(err.rawValue)
             return nil
         }
 
